@@ -1,0 +1,26 @@
+------------------------------------------------------------------------------------------------------
+Libraries
+------------------------------------------------------------------------------------------------------
+SoftWire       			https://github.com/stevemarple/SoftWire			v2.0.10
+- AsyncDelay  			https://github.com/stevemarple/AsyncDelay		v1.1.2
+
+QMC5883LCompass			https://github.com/mprograms/QMC5883LCompass		v1.2.3
+
+Adafruit ST7789			https://github.com/adafruit/Adafruit-ST7735-Library	v1.11.0
+- Adafruit GFX Library		https://github.com/adafruit/Adafruit-GFX-Library	v1.12.1
+- Adafruit BusIO		https://github.com/adafruit/Adafruit_BusIO		v1.17.2
+- Adafruit seesaw Library	https://github.com/adafruit/Adafruit_Seesaw		v1.7.9
+- SD				https://github.com/arduino-libraries/SD			v1.3.0	
+
+Adafruit MPU6050		https://github.com/adafruit/Adafruit_MPU6050		v2.2.6
+- Adafruit Unified Sensor	https://github.com/adafruit/Adafruit_Sensor		v1.1.15
+
+
+
+------------------------------------------------------------------------------------------------------
+Boards
+------------------------------------------------------------------------------------------------------
+esp32 board support 		https://github.com/espressif/arduino-esp32		v3.3.0
+
+https://dl.espressif.com/dl/package_esp32_index.json
+http://arduino.esp8266.com/stable/package_esp8266com_index.json
