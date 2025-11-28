@@ -2,11 +2,16 @@
 #include <Wire.h>                 // Standard I2C communication library
 #include <SoftWire.h>             // Software I2C for custom pins
 #include "AHT10.h"                // AHT10 temperature/humidity sensor (hardware/software I2C)
-#include <QMC5883LCompass.h>      // GY-271 Magnetometer (QMC5883L)
+//#include <QMC5883LCompass.h>    // GY-271 Magnetometer (QMC5883L) - Replaced by direct I2C driver
 #include <Adafruit_GFX.h>         // Core graphics library for displays
 #include <Adafruit_ST7789.h>      // Hardware-specific library for ST7789 (Display)
 #include <Adafruit_MPU6050.h>     // MPU6050 6DOF IMU
 #include <Adafruit_Sensor.h>      // Sensor event structure and base class
+#include <math.h>                 // Math functions (atan2, etc.) for heading calculation
+
+// ---------------- QMC5883P (GY-271) I2C Address Definition ----------------
+// GY-271 Magnetometer (QMC5883P variant) connected via hardware I2C (Wire)
+#define QMC_ADDR 0x2C             // I2C address of the detected QMC5883P device
 
 // ---------------- SoftWire configuration (custom I2C pins) ----------------
 // Allows using any available pins for I2C, required for multi-sensor applications
@@ -34,7 +39,7 @@ char swRxBuffer[16];
 AHT10 aht10_hw(0x38, BUS_WIRE, &Wire, nullptr);       // Address usually 0x38, 0x39, or 0x40
 AHT10 aht10_sw(0x38, BUS_SOFTWIRE, nullptr, &sw);
 
-QMC5883LCompass gy271;    // GY-271 Magnetometer (QMC5883L)
+//QMC5883LCompass gy271;    // GY-271 Magnetometer (QMC5883L) - Removed, replaced with direct I2C access
 
 Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST); // ST7789 Display
 //Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST); //Option2: Define manual SPI MOSI/SCLK for 
@@ -105,7 +110,7 @@ void setup() {
   digitalWrite(in2, LOW);
 
   // ---------------- Hardware I2C and Software I2C Setup ----------------
-  Wire.begin();           // For hardware I2C devices
+  Wire.begin();           // For hardware I2C devices (Front AHT10, GY-271, MPU6050, etc.)
 
   // Set up SoftWire buffers and timing BEFORE calling begin()
   sw.setTxBuffer(swTxBuffer, sizeof(swTxBuffer));
@@ -116,7 +121,8 @@ void setup() {
   aht10_hw.begin();       // Initialize hardware I2C AHT10 (front)
   aht10_sw.begin();       // Initialize software I2C AHT10 (back)
 
-  gy271.init();           // Initialize GY-271 Magnetometer
+  //gy271.init();         // Initialize GY-271 Magnetometer (library-based) - Removed
+  initQMC5883P();         // Initialize GY-271 Magnetometer (QMC5883P) via direct I2C registers
 
   // ---------------- Display Initialization ----------------
   // tft.init(WIDTH, HEIGHT, SPI_MODE)
@@ -221,15 +227,17 @@ void loop() {
       }
     }
 
-    // -------- Magnetometer (GY-271) Field Query --------
+    // -------- Magnetometer (GY-271 / QMC5883P) Field Query (I2C direct) --------
     else if (cmd == MAGNETOMETER) {
-      gy271.read();
-      int x = gy271.getX();
-      int y = gy271.getY();
-      int z = gy271.getZ();
-      Serial3.print("X: "); Serial3.print(x); Serial3.print(" nT");
-      Serial3.print("   Y: "); Serial3.print(y); Serial3.print(" nT");
-      Serial3.print("   Z: "); Serial3.print(z); Serial3.println(" nT");
+      float uT_X, uT_Y, uT_Z, headingDeg;
+      if (readQMC5883P(uT_X, uT_Y, uT_Z, headingDeg)) {
+        Serial3.print("X: "); Serial3.print(uT_X, 2); Serial3.print(" uT");
+        Serial3.print("   Y: "); Serial3.print(uT_Y, 2); Serial3.print(" uT");
+        Serial3.print("   Z: "); Serial3.print(uT_Z, 2); Serial3.print(" uT");
+        Serial3.print("   Heading: "); Serial3.print(headingDeg, 1); Serial3.println(" deg");
+      } else {
+        Serial3.println("Magnetometer: read error or no data");
+      }
     }
 
     // -------- IMU (MPU6050) - Acceleration, Gyro, Temp Query --------
@@ -311,4 +319,64 @@ void testdrawtext(char *text, uint16_t color) {
   tft.setTextColor(color);
   tft.setTextWrap(true);
   tft.print(text);
+}
+
+// ---------------- QMC5883P (GY-271) Magnetometer Helpers ----------------
+// Low-level initialization and data readout for the GY-271 module (QMC5883P variant)
+// using direct I2C register access (replaces QMC5883LCompass library).
+
+// Initialize QMC5883P at address QMC_ADDR
+void initQMC5883P() {
+  delay(100);
+
+  // Register 0x0B: Set/Reset Period -> Value 0x01
+  Wire.beginTransmission(QMC_ADDR);
+  Wire.write(0x0B); 
+  Wire.write(0x01); 
+  Wire.endTransmission();
+
+  // Register 0x0A: Control Register 1 
+  // Value 0x1D -> Continuous Mode, 200Hz, 8G Range, OSR 512
+  // (Binary: 0001 1101)
+  Wire.beginTransmission(QMC_ADDR);
+  Wire.write(0x0A); 
+  Wire.write(0x1D); 
+  Wire.endTransmission();
+}
+
+// Read magnetic field data from QMC5883P and convert to micro Tesla (uT)
+// Also computes heading angle in degrees in the XY plane.
+// Returns true if valid data was read, false otherwise.
+bool readQMC5883P(float &uT_X, float &uT_Y, float &uT_Z, float &headingDeg) {
+  // 1. Point to the data registers starting at 0x01 (X LSB)
+  Wire.beginTransmission(QMC_ADDR);
+  Wire.write(0x01); 
+  Wire.endTransmission();
+
+  // 2. Request 6 bytes: X(2), Y(2), Z(2)
+  Wire.requestFrom(QMC_ADDR, 6);
+  if (Wire.available() < 6) {
+    return false; // Not enough data available
+  }
+
+  // 3. Read low byte first, then high byte (signed 16-bit, two's complement)
+  int16_t rawX = Wire.read() | (Wire.read() << 8);
+  int16_t rawY = Wire.read() | (Wire.read() << 8);
+  int16_t rawZ = Wire.read() | (Wire.read() << 8);
+
+  // 4. Convert to Micro Tesla (uT)
+  // For Range 8G, sensitivity is usually ~3000 LSB/Gauss
+  // 1 Gauss = 100 uT
+  const float lsb_per_gauss = 3000.0;
+  const float gauss_to_uT   = 100.0;
+
+  uT_X = (rawX / lsb_per_gauss) * gauss_to_uT;
+  uT_Y = (rawY / lsb_per_gauss) * gauss_to_uT;
+  uT_Z = (rawZ / lsb_per_gauss) * gauss_to_uT;
+
+  // 5. Calculate Heading in degrees (XY plane)
+  headingDeg = atan2(uT_Y, uT_X) * 180.0 / PI;
+  if (headingDeg < 0) headingDeg += 360.0;
+
+  return true;
 }
