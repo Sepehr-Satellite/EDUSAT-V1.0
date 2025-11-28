@@ -241,12 +241,16 @@ void loop() {
     }
 
     // -------- IMU (MPU6050) - Acceleration, Gyro, Temp Query --------
-    else if (cmd == IMU) {
+      else if (cmd == IMU) {
       sensors_event_t a, g, temp;
       imu.getEvent(&a, &g, &temp);
-      Serial3.print("Acceleration X: "); Serial3.print(a.acceleration.x);
-      Serial3.print(", Y: "); Serial3.print(a.acceleration.y);
-      Serial3.print(", Z: "); Serial3.print(a.acceleration.z);
+      float norm_a = sqrt (a.acceleration.x * a.acceleration.x + a.acceleration.y * a.acceleration.y+ a.acceleration.z * a.acceleration.z);
+      float a0 = (a.acceleration.x / norm_a) * 9.806;
+      float a1 = (a.acceleration.y / norm_a) * 9.806;
+      float a2 = (a.acceleration.z / norm_a) *  9.806;
+      Serial3.print("Acceleration X: "); Serial3.print(a0);
+      Serial3.print(", Y: "); Serial3.print(a1);
+      Serial3.print(", Z: "); Serial3.print(a2);
       Serial3.println(" m/s^2");
       Serial3.print("Rotation X: "); Serial3.print(g.gyro.x);
       Serial3.print(", Y: "); Serial3.print(g.gyro.y);
