@@ -292,5 +292,5 @@ void loop() {
     }
 
     // Optionally, keep built-in LED always OFF (if present)
-    analogWrite(LED_BUILTIN_PIN, 25);
+    analogWrite(LED_BUILTIN_PIN, 0);
 }
